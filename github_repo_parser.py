@@ -111,7 +111,10 @@ def retrieve_github_repo_info(url, token=None, exclude_files=None):
         file_content = get_file_content(file_info)
         file_name = path.split('/')[-1]
         if file_name.endswith('.ipynb'):
-            file_content = ipynb_to_py(file_content)
+            try:
+                file_content = ipynb_to_py(file_content)
+            except Exception as e:
+                print(f'Failed to process {file_name}:\n{e}')
         contents[path] = file_content
 
     for path, file_content in contents.items():
