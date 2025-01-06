@@ -1,7 +1,5 @@
 # GitHub Repository Parser
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/19TIeGKKPJZvre-7SvcdRlw0g3odj-9IR?usp=sharing)
-
 This script allows you to retrieve and format information from a GitHub repository, including:
 
 - The repository's `README.md` content.
@@ -58,13 +56,13 @@ pip install requests nbformat nbconvert
 
    - **GitHub Repository URL:**  
      The URL of the repository you want to parse. You can include a specific branch in the URL (e.g., `https://github.com/username/repo/tree/branch_name`).
-   
+
    - **GitHub Personal Access Token:**  
      Your GitHub token. It will be entered securely and will not display as you type.
-   
+
    - **Files or Directories to Exclude (Optional):**  
      Comma-separated names of files or directories to exclude from the output.
-   
+
    - **File Extensions to Parse (Optional):**  
      Comma-separated list of file extensions to parse (e.g., `.py,.ipynb,.md`).  
      If left blank, the script uses default extensions (`.py`, `.ipynb`, `.html`, `.css`, `.js`, `.jsx`, `.rst`, `.md`).
@@ -73,7 +71,7 @@ pip install requests nbformat nbconvert
 
 ```bash
 Enter the GitHub repository URL: https://github.com/username/repo/tree/branch_name
-Enter your GitHub personal access token (hidden): 
+Enter your GitHub personal access token (hidden):
 Enter comma-separated file or directory names to exclude (optional): test.ipynb, docs/
 Enter comma-separated file extensions to parse (optional): .py,.md
 ```
@@ -89,3 +87,17 @@ python github_repo_parser.py > output.txt
 - **Do Not Share Your Token:** Keep your GitHub personal access token secure. Do not share it or commit it to version control.
 - **Use Environment Variables:** Prefer setting your token as an environment variable rather than hardcoding it.
 - **Hidden Token Input:** The script uses secure input methods so that your token is not displayed as you type.
+
+---
+
+## Alternatives
+
+### [Text File Merger](https://shir-man.com/txt-merge/)
+
+This tool combines multiple text files into a single document, with clear separation between files.
+
+**Note:** This tool does not support `.ipynb` files.
+
+### [Folder Map Generator](https://shir-man.com/generate-tree/)
+
+Quickly generate an ASCII tree structure for your folder.
