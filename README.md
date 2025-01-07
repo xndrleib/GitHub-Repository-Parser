@@ -1,5 +1,7 @@
 # GitHub Repository Parser
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/19TIeGKKPJZvre-7SvcdRlw0g3odj-9IR?authuser=1)]
+
 This script allows you to retrieve and format information from a GitHub repository, including:
 
 - The repository's `README.md` content.
