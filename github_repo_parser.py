@@ -3,7 +3,6 @@
 
 import requests
 import base64
-from urllib.parse import urlparse
 import nbformat
 from nbconvert import PythonExporter
 import os
@@ -12,6 +11,7 @@ import re
 import fnmatch
 import yaml
 from dotenv import load_dotenv
+from urllib.parse import urlparse
 
 def parse_github_url(url):
     parsed_url = urlparse(url)
@@ -26,7 +26,20 @@ def parse_github_url(url):
             branch = segments[idx + 1]
     return owner, repo, branch
 
-def fetch_content(owner, repo, path='', branch='main', token=None):
+def fetch_tree(owner, repo, branch, token):
+    url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    resp = requests.get(url, headers=headers)
+    if resp.status_code == 404:
+        # branch may be a sha, try using refs/heads/<branch>
+        url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/refs/heads/{branch}?recursive=1"
+        resp = requests.get(url, headers=headers)
+    resp.raise_for_status()
+    return resp.json()['tree']  # List of dicts: {'path', 'mode', 'type', 'sha', ...}
+
+def fetch_content(owner, repo, path, branch, token):
     url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
     headers = {"Accept": "application/vnd.github.v3+json"}
     if token:
@@ -75,33 +88,38 @@ def should_include_file(path, config):
     exclude = config.get('exclude', [])
     include_exts = config.get('include_extensions', [])
 
+    # Exclude always wins (most specific rule wins)
+    if match_any(path, exclude):
+        return False
     if match_any(path, include):
         return True
     for ext in include_exts:
         if path.endswith(ext):
             return True
-    if match_any(path, exclude):
-        return False
     return False
 
-def build_tree(owner, repo, path, branch, token, config):
-    items = fetch_content(owner, repo, path, branch, token)
-    tree = []
-    collected_paths = []
-    for item in items:
-        item_path = item['path']
-        if '.github' in item_path.split('/'):
-            continue
-        if item['type'] == 'dir':
-            subtree, subpaths = build_tree(owner, repo, item_path, branch, token, config)
-            if subtree:
-                tree.append({'type': 'dir', 'name': item['name'], 'children': subtree})
-                collected_paths.extend(subpaths)
-        else:
-            if should_include_file(item_path, config):
-                tree.append({'type': 'file', 'name': item['name']})
-                collected_paths.append(item_path)
-    return tree, collected_paths
+def build_tree_structure(paths):
+    """
+    Builds a directory tree structure from a list of file paths.
+    """
+    tree = {}
+    for file_path in paths:
+        parts = file_path.split('/')
+        current = tree
+        for i, part in enumerate(parts):
+            if i == len(parts) - 1:
+                current.setdefault(part, None)
+            else:
+                current = current.setdefault(part, {})
+    def build(node):
+        nodes = []
+        for name, child in sorted(node.items()):
+            if child is None:
+                nodes.append({'type': 'file', 'name': name})
+            else:
+                nodes.append({'type': 'dir', 'name': name, 'children': build(child)})
+        return nodes
+    return build(tree)
 
 def format_tree(tree, indent=0):
     result = ""
@@ -118,16 +136,33 @@ def retrieve_info(config, token):
     url = config['github_url']
     owner, repo, branch = parse_github_url(url)
     output = ""
+
+    # Fetch full repo tree once
+    tree = fetch_tree(owner, repo, branch, token)
+
+    # Filter files in memory
+    all_paths = [item['path'] for item in tree if item['type'] == 'blob']
+    included_files = [path for path in all_paths if should_include_file(path, config)]
+
+    # Special handling for README.md: show only if included by logic
+    readme_content = None
     try:
-        readme_info = fetch_content(owner, repo, 'README.md', branch, token)
-        readme_content = decode_file_content(readme_info)
         if should_include_file('README.md', config):
+            file_info = fetch_content(owner, repo, 'README.md', branch, token)
+            readme_content = decode_file_content(file_info)
             output += f"README.md:\n```\n{readme_content}\n```\n\n"
-    except Exception as e:
+    except Exception:
         pass
-    directory_tree, file_paths = build_tree(owner, repo, '', branch, token, config)
+
+    # Build and display the structure
+    directory_tree = build_tree_structure(included_files)
     output += "Directory Structure:\n" + format_tree(directory_tree) + "\n"
-    for path in file_paths:
+
+    # Fetch & display file contents
+    for path in included_files:
+        # Skip README.md as it's already handled
+        if path == 'README.md':
+            continue
         file_info = fetch_content(owner, repo, path, branch, token)
         content = decode_file_content(file_info)
         if path.endswith('.ipynb'):
