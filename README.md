@@ -1,105 +1,157 @@
 # GitHub Repository Parser
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/19TIeGKKPJZvre-7SvcdRlw0g3odj-9IR?authuser=1)
+This script retrieves and formats information from a GitHub repository, including:
 
-This script allows you to retrieve and format information from a GitHub repository, including:
+- The repository's `README.md` content (if requested by the config)
+- The directory structure
+- The contents of selected files (e.g., `.py`, `.ipynb`, `.html`, etc.)
 
-- The repository's `README.md` content.
-- The directory structure.
-- The contents of specific files (e.g., `.py`, `.ipynb`, `.html`, etc.).
+All options and filters are set in a single YAML config file.  
+The script is designed for secure and repeatable use, using a `.env` file for your GitHub Personal Access Token.
 
-It supports specifying a particular branch, excluding certain files or directories, securely handling your GitHub personal access token input, and allows you to explicitly specify the file extensions you want to parse.
+---
 
 ## Features
 
-- **Branch Selection:** Parse and retrieve content from a specific branch.
-- **File Exclusion:** Specify files or directories to exclude from the output.
-- **File Content Retrieval:** Fetch and display contents of selected file types.
-- **Jupyter Notebook Conversion:** Convert `.ipynb` files to `.py` code to save tokens and improve AI response quality.
-- **Secure Token Input:** Enter your GitHub Personal Access Token without displaying it on screen.
-- **Custom File Extensions:** Specify your own list of file extensions to be parsed, overriding defaults if desired.
+- **YAML Configuration:**  
+  All settings (repository, include/exclude lists, extensions) are managed via `config.yaml` for transparency and repeatability.
 
-## AI Prompt Creation
+- **Explicit Filtering Logic:**  
+  - **Files in the `include` list are always included,** even if excluded by their folder or extension.
+  - **Files with extensions in `include_extensions` are always included,** even if excluded by their folder.
+  - **Files or folders in `exclude` are always excluded,** even if their parent folder is included.
+  - **"Most specific rule wins"**—see logic table below.
 
-When using AI language models for code generation, assistance, or review, it's essential to provide concise and relevant prompts. This script helps in:
+- **Jupyter Notebook Conversion:**  
+  `.ipynb` files are automatically converted to `.py` code.
 
-- **Reducing Token Usage:** By converting Jupyter notebooks (`.ipynb`) to plain Python scripts (`.py`), you reduce the number of tokens required to represent the code.
-- **Improving AI Response Quality:** Simplifying the input by removing unnecessary metadata allows the AI to focus on the actual code, leading to better understanding and more accurate responses.
-- **Efficient Context Management:** Keeping prompts within token limits ensures that the AI model can process the entire input without truncation, preserving important context.
+- **Branch Selection:**  
+  Supports specifying a branch by including it in the repo URL.
+
+- **Automatic Output Saving:**  
+  Results are always written to `output.txt` for convenience.
+
+- **Secure Token Handling:**  
+  Uses a `.env` file to keep your GitHub token secret and out of your codebase.
+
+---
+
+## Configuration
+
+Create a `config.yaml` in your project directory:
+
+```yaml
+github_url: "https://github.com/youruser/yourrepo"
+exclude:
+  - "data/"
+  - "folderA/"
+  - "*.csv"
+include:
+  - "folderA/keepme.py"
+  - "README.md"
+include_extensions:
+  - ".py"
+  - ".ipynb"
+````
+
+* **`github_url`:** The GitHub repository URL. To specify a branch, use `/tree/branch_name` in the URL.
+* **`exclude`:** List of directories, files, or glob patterns to always exclude.
+* **`include`:** List of specific files to always include, even if their parent is excluded.
+* **`include_extensions`:** List of file extensions (e.g., `.py`, `.ipynb`) to always include.
+
+**All paths are relative to the repository root. Globs (e.g., `*.csv`) are supported.**
+
+---
+
+## How Filtering Works
+
+| Scenario                                         | Included? | Reason                                       |
+| ------------------------------------------------ | --------- | -------------------------------------------- |
+| File is in `include`                             | Yes       | Always included                              |
+| File matches `include_extensions`                | Yes       | Always included                              |
+| File is in `exclude`                             | No        | Always excluded (most specific rule wins)    |
+| Folder is in `exclude`, but file is in `include` | Yes       | File-level include takes priority            |
+| Folder is in `include`, but file is in `exclude` | No        | File-level exclude takes priority            |
+| File not matched by any rule                     | No        | Only included if explicitly listed or by ext |
+
+---
+
+## GitHub Token Security (`.env`)
+
+Create a `.env` file in the project directory:
+
+```
+GITHUB_TOKEN=your_github_pat_here
+```
+
+Your token will be loaded automatically via [`python-dotenv`](https://github.com/theskumar/python-dotenv).
+**Never commit `.env` files to version control.**
+
+---
 
 ## Requirements
 
-- `requests` library
-- `nbformat` library
-- `nbconvert` library
-
-You can install the required packages using:
+Install all dependencies with:
 
 ```bash
-pip install requests nbformat nbconvert
+pip install -r requirements.txt
 ```
+---
 
 ## Usage
 
-### Running the Script
-
-1. **Set Up Your GitHub Personal Access Token:**
-
-   - Generate a personal access token from your GitHub account with the necessary permissions.
-   - It's recommended to set the token as an environment variable named `GITHUB_TOKEN` to avoid exposing it in your code.
-
-2. **Run the Script:**
+1. **Edit your `config.yaml` and `.env` as shown above.**
+2. **Run the script:**
 
    ```bash
    python github_repo_parser.py
    ```
-
-3. **Provide the Following Inputs When Prompted:**
-
-   - **GitHub Repository URL:**  
-     The URL of the repository you want to parse. You can include a specific branch in the URL (e.g., `https://github.com/username/repo/tree/branch_name`).
-
-   - **GitHub Personal Access Token:**  
-     Your GitHub token. It will be entered securely and will not display as you type.
-
-   - **Files or Directories to Exclude (Optional):**  
-     Comma-separated names of files or directories to exclude from the output.
-
-   - **File Extensions to Parse (Optional):**  
-     Comma-separated list of file extensions to parse (e.g., `.py,.ipynb,.md`).  
-     If left blank, the script uses default extensions (`.py`, `.ipynb`, `.html`, `.css`, `.js`, `.jsx`, `.rst`, `.md`).
-
-### Example
-
-```bash
-Enter the GitHub repository URL: https://github.com/username/repo/tree/branch_name
-Enter your GitHub personal access token (hidden):
-Enter comma-separated file or directory names to exclude (optional): test.ipynb, docs/
-Enter comma-separated file extensions to parse (optional): .py,.md
-```
-
-The script will output the formatted repository information, which you can redirect to a file if needed:
-
-```bash
-python github_repo_parser.py > output.txt
-```
-
-## Security Note
-
-- **Do Not Share Your Token:** Keep your GitHub personal access token secure. Do not share it or commit it to version control.
-- **Use Environment Variables:** Prefer setting your token as an environment variable rather than hardcoding it.
-- **Hidden Token Input:** The script uses secure input methods so that your token is not displayed as you type.
+3. **View the results in `output.txt`.**
 
 ---
 
-## Alternatives
+### Example Workflow
 
-### [Text File Merger](https://shir-man.com/txt-merge/)
+**config.yaml**
 
-This tool combines multiple text files into a single document, with clear separation between files.
+```yaml
+github_url: "https://github.com/example/repo"
+exclude:
+  - "docs/"
+  - "*.csv"
+include:
+  - "docs/special.md"
+  - "README.md"
+include_extensions:
+  - ".py"
+```
 
-**Note:** This tool does not support `.ipynb` files.
+**.env**
 
-### [Folder Map Generator](https://shir-man.com/generate-tree/)
+```
+GITHUB_TOKEN=ghp_yourtoken
+```
 
-Quickly generate an ASCII tree structure for your folder.
+**Run:**
+
+```bash
+python github_repo_parser.py
+```
+
+---
+
+## AI Prompt Creation Benefits
+
+When using AI models for code review or generation, this script helps you:
+
+* **Reduce token usage** by converting Jupyter notebooks to Python scripts.
+* **Improve AI response quality** by stripping unnecessary metadata.
+* **Stay within context limits** by including only relevant files.
+
+---
+
+## Security Notes
+
+* **Never share or commit your GitHub token.**
+* **Always use a `.env` file for credentials.**
+* **Tokens are loaded securely and never echoed or logged.**

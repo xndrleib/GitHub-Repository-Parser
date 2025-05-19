@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+"""GitHub Repo Parser"""
+
 import requests
 import base64
 from urllib.parse import urlparse
@@ -6,6 +9,9 @@ from nbconvert import PythonExporter
 import os
 import getpass
 import re
+import fnmatch
+import yaml
+from dotenv import load_dotenv
 
 def parse_github_url(url):
     parsed_url = urlparse(url)
@@ -35,10 +41,8 @@ def decode_file_content(file_info):
     return file_info.get('content', '')
 
 def ipynb_to_py(nb_string):
-    # Convert .ipynb to .py code
     notebook = nbformat.reads(nb_string, as_version=4)
     code, _ = PythonExporter().from_notebook_node(notebook)
-    # Clean the code to reduce token usage
     code = clean_converted_code(code)
     return code
 
@@ -47,50 +51,56 @@ def clean_converted_code(code: str) -> str:
     cleaned_lines = []
     for line in lines:
         stripped = line.strip()
-        # Remove IPython magic commands
         if stripped.startswith('get_ipython()'):
             continue
-        # Remove environment shebang and coding lines
         if stripped.startswith('#!') or stripped.startswith('# coding:'):
             continue
-        # Remove markdown headers (e.g. '# # Something')
         if stripped.startswith('# #'):
             continue
-        # Remove cell markers like '# In[23]', '# In[ ]:', etc.
         if re.match(r'# In\[.*\]:?', stripped):
             continue
-        # Remove multiple consecutive blank lines
         if stripped == '':
             if cleaned_lines and cleaned_lines[-1].strip() == '':
                 continue
-
         cleaned_lines.append(line)
-
     return '\n'.join(cleaned_lines).strip() + '\n'
 
-def build_tree(owner, repo, path, branch, token, exclude, allowed):
+def match_any(path, patterns):
+    if not patterns:
+        return False
+    return any(fnmatch.fnmatch(path, pat) for pat in patterns)
+
+def should_include_file(path, config):
+    include = config.get('include', [])
+    exclude = config.get('exclude', [])
+    include_exts = config.get('include_extensions', [])
+
+    if match_any(path, include):
+        return True
+    for ext in include_exts:
+        if path.endswith(ext):
+            return True
+    if match_any(path, exclude):
+        return False
+    return False
+
+def build_tree(owner, repo, path, branch, token, config):
     items = fetch_content(owner, repo, path, branch, token)
     tree = []
     collected_paths = []
-    default_extensions = ['.py', '.ipynb', '.html', '.css', '.js', '.jsx', '.rst', '.md']
-
     for item in items:
-        # Skip .github directories, excluded patterns, and README.md since it's handled separately
-        if ('.github' in item['path'].split('/') or 
-            (exclude and any(x for x in exclude if x and x in item['path'])) or 
-            item['name'] == 'README.md'):
+        item_path = item['path']
+        if '.github' in item_path.split('/'):
             continue
-
         if item['type'] == 'dir':
-            subtree, subpaths = build_tree(owner, repo, item['path'], branch, token, exclude, allowed)
-            tree.append({'type': 'dir', 'name': item['name'], 'children': subtree})
-            collected_paths.extend(subpaths)
+            subtree, subpaths = build_tree(owner, repo, item_path, branch, token, config)
+            if subtree:
+                tree.append({'type': 'dir', 'name': item['name'], 'children': subtree})
+                collected_paths.extend(subpaths)
         else:
-            tree.append({'type': 'file', 'name': item['name']})
-            exts = allowed if allowed else default_extensions
-            if any(item['name'].endswith(ext.strip()) for ext in exts):
-                collected_paths.append(item['path'])
-
+            if should_include_file(item_path, config):
+                tree.append({'type': 'file', 'name': item['name']})
+                collected_paths.append(item_path)
     return tree, collected_paths
 
 def format_tree(tree, indent=0):
@@ -104,22 +114,19 @@ def format_tree(tree, indent=0):
             result += f"{prefix}{node['name']}\n"
     return result
 
-def retrieve_info(url, token, exclude, allowed):
+def retrieve_info(config, token):
+    url = config['github_url']
     owner, repo, branch = parse_github_url(url)
     output = ""
-
-    # Fetch and print README once
     try:
         readme_info = fetch_content(owner, repo, 'README.md', branch, token)
         readme_content = decode_file_content(readme_info)
-        output += f"README.md:\n```\n{readme_content}\n```\n\n"
-    except:
-        output += "README.md: Not found or error fetching README\n\n"
-
-    directory_tree, file_paths = build_tree(owner, repo, '', branch, token, exclude, allowed)
+        if should_include_file('README.md', config):
+            output += f"README.md:\n```\n{readme_content}\n```\n\n"
+    except Exception as e:
+        pass
+    directory_tree, file_paths = build_tree(owner, repo, '', branch, token, config)
     output += "Directory Structure:\n" + format_tree(directory_tree) + "\n"
-
-    # Fetch and process files (excluding README.md)
     for path in file_paths:
         file_info = fetch_content(owner, repo, path, branch, token)
         content = decode_file_content(file_info)
@@ -130,20 +137,29 @@ def retrieve_info(url, token, exclude, allowed):
                 content = f"# Failed to convert {path}: {e}"
         if content.strip():
             output += f"\n{path}:\n```\n{content}\n```\n"
-
     return output
 
 if __name__ == "__main__":
-    github_url = input("Enter the GitHub repository URL: ")
+    load_dotenv()  # Load .env for GITHUB_TOKEN
+
+    config_path = 'config.yaml'
+    if not os.path.exists(config_path):
+        raise FileNotFoundError("config.yaml not found! Please create one.")
+
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+
+    if 'include' not in config: config['include'] = []
+    if 'exclude' not in config: config['exclude'] = []
+    if 'include_extensions' not in config: config['include_extensions'] = []
+
     token = os.environ.get('GITHUB_TOKEN')
     if not token:
         token = getpass.getpass("Enter your GitHub personal access token (hidden): ")
 
-    exclude_str = input("Enter comma-separated file or directory names to exclude (optional): ")
-    exclude = [x.strip() for x in exclude_str.split(',')] if exclude_str else None
+    result = retrieve_info(config, token)
 
-    exts_str = input("Enter comma-separated file extensions to parse (optional, e.g., .py,.ipynb,.md): ")
-    allowed_exts = [x.strip() for x in exts_str.split(',')] if exts_str else None
-
-    result = retrieve_info(github_url, token, exclude, allowed_exts)
-    print(result)
+    # Save result to output.txt
+    with open('output.txt', 'w', encoding='utf-8') as out_f:
+        out_f.write(result)
+    print("Result saved to output.txt")
