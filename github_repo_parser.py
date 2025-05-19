@@ -10,8 +10,10 @@ import getpass
 import re
 import fnmatch
 import yaml
+import sys
 from dotenv import load_dotenv
 from urllib.parse import urlparse
+from datetime import datetime
 
 def parse_github_url(url):
     parsed_url = urlparse(url)
@@ -37,7 +39,7 @@ def fetch_tree(owner, repo, branch, token):
         url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/refs/heads/{branch}?recursive=1"
         resp = requests.get(url, headers=headers)
     resp.raise_for_status()
-    return resp.json()['tree']  # List of dicts: {'path', 'mode', 'type', 'sha', ...}
+    return resp.json()['tree']
 
 def fetch_content(owner, repo, path, branch, token):
     url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
@@ -81,7 +83,18 @@ def clean_converted_code(code: str) -> str:
 def match_any(path, patterns):
     if not patterns:
         return False
-    return any(fnmatch.fnmatch(path, pat) for pat in patterns)
+    for pat in patterns:
+        pat = pat.strip()
+        if pat.endswith('/'):
+            if path.startswith(pat):
+                return True
+        elif '*' in pat or '?' in pat or '[' in pat:
+            if fnmatch.fnmatch(path, pat):
+                return True
+        else:
+            if path == pat:
+                return True
+    return False
 
 def should_include_file(path, config):
     include = config.get('include', [])
@@ -99,9 +112,6 @@ def should_include_file(path, config):
     return False
 
 def build_tree_structure(paths):
-    """
-    Builds a directory tree structure from a list of file paths.
-    """
     tree = {}
     for file_path in paths:
         parts = file_path.split('/')
@@ -139,13 +149,10 @@ def retrieve_info(config, token):
 
     # Fetch full repo tree once
     tree = fetch_tree(owner, repo, branch, token)
-
-    # Filter files in memory
     all_paths = [item['path'] for item in tree if item['type'] == 'blob']
     included_files = [path for path in all_paths if should_include_file(path, config)]
 
-    # Special handling for README.md: show only if included by logic
-    readme_content = None
+    # Special handling for README.md
     try:
         if should_include_file('README.md', config):
             file_info = fetch_content(owner, repo, 'README.md', branch, token)
@@ -154,13 +161,10 @@ def retrieve_info(config, token):
     except Exception:
         pass
 
-    # Build and display the structure
     directory_tree = build_tree_structure(included_files)
     output += "Directory Structure:\n" + format_tree(directory_tree) + "\n"
 
-    # Fetch & display file contents
     for path in included_files:
-        # Skip README.md as it's already handled
         if path == 'README.md':
             continue
         file_info = fetch_content(owner, repo, path, branch, token)
@@ -172,14 +176,21 @@ def retrieve_info(config, token):
                 content = f"# Failed to convert {path}: {e}"
         if content.strip():
             output += f"\n{path}:\n```\n{content}\n```\n"
-    return output
+    return output, repo, branch
+
+def get_output_filename(repo, branch):
+    now = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_repo = re.sub(r'[^a-zA-Z0-9_-]', '_', repo)
+    safe_branch = re.sub(r'[^a-zA-Z0-9_-]', '_', branch)
+    return f"output_{safe_repo}_{safe_branch}_{now}.txt"
 
 if __name__ == "__main__":
-    load_dotenv()  # Load .env for GITHUB_TOKEN
+    load_dotenv()
 
-    config_path = 'config.yaml'
+    # Get config path from CLI argument, else default to config.yaml
+    config_path = sys.argv[1] if len(sys.argv) > 1 else 'config.yaml'
     if not os.path.exists(config_path):
-        raise FileNotFoundError("config.yaml not found! Please create one.")
+        raise FileNotFoundError(f"{config_path} not found! Please provide a valid config YAML.")
 
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
@@ -192,9 +203,10 @@ if __name__ == "__main__":
     if not token:
         token = getpass.getpass("Enter your GitHub personal access token (hidden): ")
 
-    result = retrieve_info(config, token)
+    result, repo, branch = retrieve_info(config, token)
 
-    # Save result to output.txt
-    with open('output.txt', 'w', encoding='utf-8') as out_f:
+    # Compose output file name based on repo, branch, datetime
+    output_filename = get_output_filename(repo, branch)
+    with open(output_filename, 'w', encoding='utf-8') as out_f:
         out_f.write(result)
-    print("Result saved to output.txt")
+    print(f"Result saved to {output_filename}")

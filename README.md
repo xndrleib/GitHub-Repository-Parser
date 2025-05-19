@@ -14,7 +14,7 @@ The script is designed for secure and repeatable use, using a `.env` file for yo
 ## Features
 
 - **YAML Configuration:**  
-  All settings (repository, include/exclude lists, extensions) are managed via `config.yaml` for transparency and repeatability.
+  All settings (repository, include/exclude lists, extensions) are managed via `config.yaml` (or any YAML you specify) for transparency and repeatability.
 
 - **Explicit Filtering Logic:**  
   - **Files in the `include` list are always included,** even if excluded by their folder or extension.
@@ -29,7 +29,12 @@ The script is designed for secure and repeatable use, using a `.env` file for yo
   Supports specifying a branch by including it in the repo URL.
 
 - **Automatic Output Saving:**  
-  Results are always written to `output.txt` for convenience.
+  The output is always written to a file named like  
+  `output_{repo}_{branch}_{YYYYMMDD_HHMMSS}.txt`  
+  Example: `output_Motor-Fault-Detection_denoising_20240519_210745.txt`
+
+- **Config Path Argument:**  
+  You can specify the config file as a command line argument (default: `config.yaml`).
 
 - **Secure Token Handling:**  
   Uses a `.env` file to keep your GitHub token secret and out of your codebase.
@@ -38,7 +43,7 @@ The script is designed for secure and repeatable use, using a `.env` file for yo
 
 ## Configuration
 
-Create a `config.yaml` in your project directory:
+Create a `config.yaml` in your project directory (or use a different filename):
 
 ```yaml
 github_url: "https://github.com/youruser/yourrepo"
@@ -96,6 +101,7 @@ Install all dependencies with:
 ```bash
 pip install -r requirements.txt
 ```
+
 ---
 
 ## Usage
@@ -106,7 +112,15 @@ pip install -r requirements.txt
    ```bash
    python github_repo_parser.py
    ```
-3. **View the results in `output.txt`.**
+
+   or, to use a custom config path:
+
+   ```bash
+   python github_repo_parser.py my_custom_config.yaml
+   ```
+3. **View the results in the output file named like:**
+   `output_{repo}_{branch}_{YYYYMMDD_HHMMSS}.txt`
+   (The script will print the filename after running.)
 
 ---
 
@@ -136,6 +150,12 @@ GITHUB_TOKEN=ghp_yourtoken
 
 ```bash
 python github_repo_parser.py
+```
+
+or
+
+```bash
+python github_repo_parser.py my_special_config.yaml
 ```
 
 ---
