@@ -3,3 +3,4 @@ nbconvert
 nbformat
 python-dotenv
 pyyaml
+pytest

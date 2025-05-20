@@ -2,9 +2,9 @@
 
 This tool retrieves and formats information from a GitHub repository, including:
 
-- The repository's `README.md` content (if requested by the config)
-- The directory structure
-- The contents of selected files (e.g., `.py`, `.ipynb`, `.html`, etc.)
+* The repository's `README.md` content (if requested by the config)
+* The directory structure
+* The contents of selected files (e.g., `.py`, `.ipynb`, `.html`, etc.)
 
 All options and filters are set in a single YAML config file.  
 Your GitHub Personal Access Token is loaded securely via a `.env` file.
@@ -13,42 +13,56 @@ Your GitHub Personal Access Token is loaded securely via a `.env` file.
 
 ## Features
 
-- **Modular, Maintainable Codebase:**  
+* **Modular, Maintainable Codebase:**  
   The tool is structured as three modules:
-  - `main.py` (CLI & orchestration)
-  - `fetcher.py` (all GitHub/network file fetching)
-  - `processor.py` (all filtering, parsing, and formatting)
 
-- **YAML Configuration:**  
+  * `main.py` (CLI & orchestration)
+  * `fetcher.py` (all GitHub/network file fetching)
+  * `processor.py` (all filtering, parsing, and formatting)
+
+* **YAML Configuration:**  
   All settings (repository, include/exclude lists, extensions) are managed via `config.yaml` (or any YAML you specify) for transparency and repeatability.
 
-- **Explicit Filtering Logic:**  
-  - **Files in the `include` list are always included,** even if excluded by their folder or extension.
-  - **Files with extensions in `include_extensions` are always included,** even if excluded by their folder.
-  - **Files or folders in `exclude` are always excluded,** even if their parent folder is included.
-  - **"Most specific rule wins"**—see logic table below.
+* **Explicit Filtering Logic:**  
 
-- **Performance Optimized:**  
-  - **Parallel file content fetching** for large repositories.
-  - **Uses raw.githubusercontent.com for public repos** (no API limit, even faster).
-  - Detects public/private repo status automatically.
+  * **Files in the `include` list are always included,** even if excluded by their folder or extension.
+  * **Files with extensions in `include_extensions` are always included,** even if excluded by their folder.
+  * **Files or folders in `exclude` are always excluded,** even if their parent folder is included.
+  * **"Most specific rule wins"**—see logic table below.
 
-- **Jupyter Notebook Conversion:**  
+* **Performance Optimized:**  
+
+  * **Parallel file content fetching** for large repositories.
+  * **Uses raw.githubusercontent.com for public repos** (no API limit, even faster).
+  * Detects public/private repo status automatically.
+
+* **Jupyter Notebook Conversion with Custom Templates:**  
   `.ipynb` files are automatically converted to `.py` code.
+  You can provide your own Jupyter nbconvert template (see [Custom Notebook Conversion Templates](#custom-notebook-conversion-templates)).
 
-- **Branch Selection:**  
+* **Branch Selection:**  
   Supports specifying a branch by including it in the repo URL.
 
-- **Automatic Output Saving:**  
+* **Automatic Output Saving:**  
   The output is always written to a file named like  
   `output_{repo}_{branch}_{YYYYMMDD_HHMMSS}.txt`  
   Example: `output_Motor-Fault-Detection_denoising_20240519_210745.txt`
 
-- **Config Path Argument:**  
+* **Config Path Argument:**  
   You can specify the config file as a command line argument (default: `config.yaml`).
 
-- **Secure Token Handling:**  
+* **Secure Token Handling:**  
   Uses a `.env` file to keep your GitHub token secret and out of your codebase.
+
+---
+
+## AI Prompt Creation Benefits
+
+When using AI models for code review or generation, this script helps you:
+
+* **Reduce token usage** by converting Jupyter notebooks to Python scripts.
+* **Improve AI response quality** by stripping unnecessary metadata.
+* **Stay within context limits** by including only relevant files.
 
 ---
 
@@ -68,7 +82,12 @@ include:    # Do NOT leave blank! Use [] for an empty list
 include_extensions:
   - ".py"
   - ".ipynb"
-````
+
+# Optional: Custom nbconvert template for Jupyter notebook conversion
+ipynb_conversion:
+  template_file: "templates/python_with_output.tpl"
+  extra_template_basedirs: "templates"
+```
 
 * **`github_url`:** The GitHub repository URL. To specify a branch, use `/tree/branch_name` in the URL.
 * **`exclude`:** List of directories, files, or glob patterns to always exclude.
@@ -76,6 +95,10 @@ include_extensions:
 * **`include`:** List of specific files to always include, even if their parent is excluded.
   Use `include: []` for none.
 * **`include_extensions`:** List of file extensions (e.g., `.py`, `.ipynb`) to always include.
+* **`ipynb_conversion`:** *(Optional)*
+
+  * `template_file`: Path to your custom nbconvert template file.
+  * `extra_template_basedirs`: Directory containing templates.
 
 **All paths are relative to the repository root. Globs (e.g., `*.csv`) are supported.**
 
@@ -120,7 +143,10 @@ pip install -r requirements.txt
 ## Usage
 
 1. **Edit your `config.yaml` and `.env` as shown above.**
-2. **Run the script:**
+
+2. **(Optional) Place your custom nbconvert templates in the `templates/` folder or as configured.**
+
+3. **Run the script:**
 
    ```bash
    python main.py
@@ -132,55 +158,42 @@ pip install -r requirements.txt
    python main.py my_custom_config.yaml
    ```
 
-3. **View the results in the output file named like:**
+4. **View the results in the output file named like:**
    `output_{repo}_{branch}_{YYYYMMDD_HHMMSS}.txt`
    (The script will print the filename after running.)
 
 ---
 
-### Example Workflow
+## Custom Notebook Conversion Templates
 
-**config.yaml**
+If you want to **extract cell outputs** or use other formatting for `.ipynb` to `.py` conversion,
+add the following to your config (see [Configuration](#configuration)):
 
 ```yaml
-github_url: "https://github.com/example/repo"
-exclude:
-  - "docs/"
-  - "*.csv"
-include:
-  - "docs/special.md"
-  - "README.md"
-include_extensions:
-  - ".py"
+ipynb_conversion:
+  template_file: "templates/python_with_output.tpl"
+  extra_template_basedirs: "templates"
 ```
 
-**.env**
-
-```
-GITHUB_TOKEN=ghp_yourtoken
-```
-
-**Run:**
-
-```bash
-python main.py
-```
-
-or
-
-```bash
-python main.py my_special_config.yaml
-```
+Place your template (such as `python_with_output.tpl`) in the `templates/` directory.
 
 ---
 
-## AI Prompt Creation Benefits
+## Testing
 
-When using AI models for code review or generation, this script helps you:
+The project includes robust tests to ensure correctness of Jupyter notebook conversion (including custom templates).
 
-* **Reduce token usage** by converting Jupyter notebooks to Python scripts.
-* **Improve AI response quality** by stripping unnecessary metadata.
-* **Stay within context limits** by including only relevant files.
+**To run tests:**
+
+```bash
+# Set PYTHONPATH if needed so the test finds project modules
+PYTHONPATH=. pytest
+```
+
+**Tests are located in the `tests/` folder** and verify:
+
+* Default conversion (standard nbconvert template)
+* Custom conversion (your template, including output extraction)
 
 ---
 
@@ -202,5 +215,10 @@ GitHub-Repository-Parser/
 ├── fetcher.py              # GitHub API/network logic
 ├── processor.py            # Filtering/conversion logic
 ├── main.py                 # CLI and orchestration
-└── requirements.txt
+├── requirements.txt
+├── templates/              # (Optional) Custom nbconvert templates
+│   └── python_with_output.tpl
+└── tests/
+    ├── test_ipynb_conversion.py
+    └── sample_notebook.ipynb
 ```

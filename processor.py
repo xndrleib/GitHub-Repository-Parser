@@ -73,9 +73,22 @@ def format_tree(tree, indent=0):
             result += f"{prefix}{node['name']}\n"
     return result
 
-def ipynb_to_py(nb_string):
+def ipynb_to_py(nb_string, conversion_options=None):
     notebook = nbformat.reads(nb_string, as_version=4)
-    code, _ = PythonExporter().from_notebook_node(notebook)
+    exporter_args = {}
+    conversion_options = conversion_options or {}
+
+    # Handle custom template, extra_template_basedirs
+    template_file = conversion_options.get("template_file")
+    extra_template_basedirs = conversion_options.get("extra_template_basedirs")
+
+    if template_file:
+        exporter_args['template_file'] = template_file
+    if extra_template_basedirs:
+        exporter_args['extra_template_basedirs'] = [extra_template_basedirs]
+
+    exporter = PythonExporter(**exporter_args)
+    code, _ = exporter.from_notebook_node(notebook)
     code = clean_converted_code(code)
     return code
 

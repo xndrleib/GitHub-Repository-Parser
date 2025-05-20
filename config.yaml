@@ -1,8 +1,11 @@
 github_url: https://github.com/xndrleib/Motor-Fault-Detection/tree/denoising
-exclude:
+exclude: []
 include:
   - src/
   - notebooks/
 include_extensions:
   - ".py"
   - ".ipynb"
+ipynb_conversion:
+  template_file: "templates/python_with_output.tpl"
+  extra_template_basedirs: "templates"

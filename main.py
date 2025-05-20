@@ -60,7 +60,7 @@ def retrieve_info(config, token):
         content = contents.get(path, '')
         if path.endswith('.ipynb'):
             try:
-                content = ipynb_to_py(content)
+                content = ipynb_to_py(content, config.get('ipynb_conversion', {}))
             except Exception as e:
                 content = f"# Failed to convert {path}: {e}"
         if content.strip():
