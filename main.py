@@ -78,9 +78,9 @@ if __name__ == "__main__":
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
 
-    if 'include' not in config: config['include'] = []
-    if 'exclude' not in config: config['exclude'] = []
-    if 'include_extensions' not in config: config['include_extensions'] = []
+    for key in ['include', 'exclude', 'include_extensions']:
+        if key not in config or config[key] is None:
+            config[key] = []
 
     token = os.environ.get('GITHUB_TOKEN')
     if not token:
