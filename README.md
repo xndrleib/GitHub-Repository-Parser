@@ -11,6 +11,16 @@ Your GitHub Personal Access Token is loaded securely via a `.env` file.
 
 ---
 
+## AI Prompt Creation Benefits
+
+When using AI models for code review or generation, this tool helps you:
+
+* **Reduce token usage** by converting Jupyter notebooks to Python scripts.
+* **Improve AI response quality** by stripping unnecessary metadata.
+* **Stay within context limits** by including only relevant files.
+
+---
+
 ## Features
 
 * **Modular, Maintainable Codebase:**  
@@ -53,16 +63,6 @@ Your GitHub Personal Access Token is loaded securely via a `.env` file.
 
 * **Secure Token Handling:**  
   Uses a `.env` file to keep your GitHub token secret and out of your codebase.
-
----
-
-## AI Prompt Creation Benefits
-
-When using AI models for code review or generation, this script helps you:
-
-* **Reduce token usage** by converting Jupyter notebooks to Python scripts.
-* **Improve AI response quality** by stripping unnecessary metadata.
-* **Stay within context limits** by including only relevant files.
 
 ---
 
