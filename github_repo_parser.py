@@ -14,6 +14,8 @@ import sys
 from dotenv import load_dotenv
 from urllib.parse import urlparse
 from datetime import datetime
+from pathlib import PurePosixPath
+import concurrent.futures
 
 def parse_github_url(url):
     parsed_url = urlparse(url)
@@ -30,7 +32,10 @@ def parse_github_url(url):
 
 def fetch_tree(owner, repo, branch, token):
     url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
-    headers = {"Accept": "application/vnd.github.v3+json"}
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "github-repo-parser"
+    }
     if token:
         headers["Authorization"] = f"Bearer {token}"
     resp = requests.get(url, headers=headers)
@@ -43,7 +48,10 @@ def fetch_tree(owner, repo, branch, token):
 
 def fetch_content(owner, repo, path, branch, token):
     url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
-    headers = {"Accept": "application/vnd.github.v3+json"}
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "github-repo-parser"
+    }
     if token:
         headers["Authorization"] = f"Bearer {token}"
     resp = requests.get(url, headers=headers, params={'ref': branch})
@@ -80,25 +88,31 @@ def clean_converted_code(code: str) -> str:
         cleaned_lines.append(line)
     return '\n'.join(cleaned_lines).strip() + '\n'
 
+def normalize_path(path):
+    return str(PurePosixPath(path))
+
 def match_any(path, patterns):
+    # patterns: list of globs, file/dir names, or dir globs ending with /
     if not patterns:
         return False
+    norm_path = normalize_path(path)
     for pat in patterns:
         pat = pat.strip()
+        pat_norm = normalize_path(pat)
         if pat.endswith('/'):
-            if path.startswith(pat):
+            if norm_path.startswith(pat_norm):
                 return True
         elif '*' in pat or '?' in pat or '[' in pat:
-            if fnmatch.fnmatch(path, pat):
+            if fnmatch.fnmatch(norm_path, pat_norm):
                 return True
         else:
-            if path == pat:
+            if norm_path == pat_norm:
                 return True
     return False
 
 def should_include_file(path, config):
-    include = config.get('include', [])
-    exclude = config.get('exclude', [])
+    include = [normalize_path(p) for p in config.get('include', [])]
+    exclude = [normalize_path(p) for p in config.get('exclude', [])]
     include_exts = config.get('include_extensions', [])
 
     # Exclude always wins (most specific rule wins)
@@ -142,6 +156,39 @@ def format_tree(tree, indent=0):
             result += f"{prefix}{node['name']}\n"
     return result
 
+def is_public_repo(owner, repo):
+    url = f"https://api.github.com/repos/{owner}/{repo}"
+    headers = {"User-Agent": "github-repo-parser"}
+    resp = requests.get(url, headers=headers)
+    if resp.status_code == 200:
+        return not resp.json().get('private', False)
+    return False
+
+def fetch_raw_content(owner, repo, branch, path):
+    url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}"
+    resp = requests.get(url)
+    resp.raise_for_status()
+    return resp.text
+
+def fetch_file_content(args):
+    owner, repo, path, branch, token, is_public = args
+    try:
+        if is_public:
+            return path, fetch_raw_content(owner, repo, branch, path)
+        else:
+            file_info = fetch_content(owner, repo, path, branch, token)
+            return path, decode_file_content(file_info)
+    except Exception as e:
+        return path, f"# ERROR: Could not fetch file: {e}"
+
+def fetch_all_contents(owner, repo, included_files, branch, token, is_public, max_workers=8):
+    args_list = [(owner, repo, path, branch, token, is_public) for path in included_files if path != 'README.md']
+    contents = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for path, content in executor.map(fetch_file_content, args_list):
+            contents[path] = content
+    return contents
+
 def retrieve_info(config, token):
     url = config['github_url']
     owner, repo, branch = parse_github_url(url)
@@ -152,23 +199,31 @@ def retrieve_info(config, token):
     all_paths = [item['path'] for item in tree if item['type'] == 'blob']
     included_files = [path for path in all_paths if should_include_file(path, config)]
 
+    # Check if repo is public for raw fetch optimization
+    is_public = is_public_repo(owner, repo) if not token else False
+
     # Special handling for README.md
     try:
         if should_include_file('README.md', config):
-            file_info = fetch_content(owner, repo, 'README.md', branch, token)
-            readme_content = decode_file_content(file_info)
+            if is_public:
+                readme_content = fetch_raw_content(owner, repo, branch, 'README.md')
+            else:
+                file_info = fetch_content(owner, repo, 'README.md', branch, token)
+                readme_content = decode_file_content(file_info)
             output += f"README.md:\n```\n{readme_content}\n```\n\n"
-    except Exception:
-        pass
+    except Exception as e:
+        output += f"README.md:\n```\n# ERROR: Could not fetch README.md: {e}\n```\n\n"
 
     directory_tree = build_tree_structure(included_files)
     output += "Directory Structure:\n" + format_tree(directory_tree) + "\n"
 
+    # Fetch all included files in parallel (except README.md, which is handled above)
+    contents = fetch_all_contents(owner, repo, included_files, branch, token, is_public)
+
     for path in included_files:
         if path == 'README.md':
             continue
-        file_info = fetch_content(owner, repo, path, branch, token)
-        content = decode_file_content(file_info)
+        content = contents.get(path, '')
         if path.endswith('.ipynb'):
             try:
                 content = ipynb_to_py(content)
